@@ -24,14 +24,24 @@ env.RESULTS = "${PIXI_PROJECT_ROOT}/data/results"
 env.SCRIPTS = "${PIXI_PROJECT_ROOT}/workflow/scripts"
 
 [dependencies]
-python = ">=3.12"
+python = ">=3.14.4,<3.15"
 ipython = "*"
 ipykernel = "*"
 jupyterlab = "*"
 pip = "*"
+r = ">=4.5,<4.6"
+r-httr2 = ">=1.2.2,<2"
+r-jsonlite = ">=2.0.0,<3"
+r-tibble = ">=3.3.1,<4"
 
 [pypi-dependencies]
 damply = ">=0.10.0, <0.11"
+numpy = ">=2.4.4, <3"
+pandas = ">=3.0.2, <4"
+cmappy = ">=4.0.1, <5"
+scikit-learn = ">=1.8.0, <2"
+snakemake = ">=9.6.2, <10"
+tqdm = ">=4.67.3, <5"
 
 [tasks]
 example_script = {cmd="python $SCRIPTS/example_script.py", description="Run an example script"}
