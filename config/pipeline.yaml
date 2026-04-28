@@ -1,0 +1,51 @@
+# Pipeline directory layout
+paths:
+  raw_dir: data/rawdata
+  proc_dir: data/procdata
+  results_dir: data/results
+
+dataset:
+  # Stable identifier used in final result filenames
+  id: lincs
+  version: v2.0.0
+  # LINCS2020 source metadata files
+  cell_metadata_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/cellinfo_beta.txt
+  compound_metadata_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/compoundinfo_beta.txt
+  gene_metadata_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/geneinfo_beta.txt
+  signature_metadata_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/siginfo_beta.txt
+  # LINCS2020 expression matrix files
+  treatment_matrix_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/level5/level5_beta_trt_cp_n720216x12328.gctx
+  control_matrix_url: https://s3.amazonaws.com/macchiato.clue.io/builds/LINCS2020/level5/level5_beta_ctl_n58022x12328.gctx
+
+# Base AnnotationDB API URL
+# The workflow appends /compound/all
+annotationdb_api: https://v2annotationdb.bhklab.ca
+
+selection:
+  # Keep only cell lines with Cellosaurus and CCLE names
+  only_named_cells: true
+  # Keep only tumor cell lines
+  only_cancer_cells: true
+  # LINCS gene feature spaces to keep
+  valid_gene_types:
+    - landmark
+  # Dose units to keep
+  valid_dose_units:
+    - uM
+  # Perturbation classes to keep
+  valid_pert_types:
+    - trt_cp
+  # Optional allow list of CMap compound names
+  include_compounds: []
+  # Optional deny list of CMap compound names
+  exclude_compounds: []
+  # Set to null to process every selected compound
+  compound_limit: null
+  # Drop signatures with negative expression values before summary fitting
+  only_nonnegative_signatures: true
+
+download:
+  # Redownload files even when a nonempty local copy exists
+  overwrite: false
+  # Download the control matrix as an optional side input
+  include_control_matrix: false

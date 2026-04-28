@@ -1,0 +1,345 @@
+from csv import DictReader
+from functools import lru_cache
+from urllib.parse import urlparse
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_optional_int(value):
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+        return None
+    return int(value)
+
+
+def parse_selection_list(values):
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [item.strip() for item in values.split(",")]
+
+    normalized = []
+    seen = set()
+    for value in values:
+        item = str(value).strip()
+        if not item or item in seen:
+            continue
+        normalized.append(item)
+        seen.add(item)
+    return normalized
+
+
+def url_filename(url):
+    filename = urlparse(str(url)).path.rstrip("/").split("/")[-1]
+    if not filename:
+        raise ValueError(f"Could not derive filename from URL: {url}")
+    return filename
+
+
+configfile: "config/pipeline.yaml"
+
+paths_cfg = dict(config["paths"])
+dataset_cfg = dict(config["dataset"])
+selection_cfg = dict(config["selection"])
+download_cfg = dict(config["download"])
+
+paths_cfg["raw_dir"] = config.get("raw_dir", paths_cfg["raw_dir"])
+paths_cfg["proc_dir"] = config.get("proc_dir", paths_cfg["proc_dir"])
+paths_cfg["results_dir"] = config.get("results_dir", paths_cfg["results_dir"])
+selection_cfg["include_compounds"] = config.get(
+    "include_compounds", selection_cfg.get("include_compounds")
+)
+selection_cfg["exclude_compounds"] = config.get(
+    "exclude_compounds", selection_cfg.get("exclude_compounds")
+)
+selection_cfg["compound_limit"] = config.get(
+    "compound_limit", selection_cfg.get("compound_limit")
+)
+download_cfg["overwrite"] = config.get("overwrite", download_cfg.get("overwrite"))
+download_cfg["include_control_matrix"] = config.get(
+    "include_control_matrix", download_cfg.get("include_control_matrix")
+)
+
+RAW_DIR = paths_cfg["raw_dir"].rstrip("/")
+PROC_DIR = paths_cfg["proc_dir"].rstrip("/")
+RESULTS_DIR = paths_cfg["results_dir"].rstrip("/")
+RAW_METADATA_DIR = f"{RAW_DIR}/metadata"
+PROC_METADATA_DIR = f"{PROC_DIR}/metadata"
+DATASET_ID = dataset_cfg.get("id", "lincs")
+DATASET_VERSION = str(dataset_cfg.get("version", "v2.0.0"))
+DOWNLOAD_STAMP_DIR = f"{RAW_METADATA_DIR}/download_stamps"
+
+CELL_METADATA = f"{RAW_DIR}/cellinfo_beta.txt"
+COMPOUND_METADATA = f"{RAW_DIR}/compoundinfo_beta.txt"
+GENE_METADATA = f"{RAW_DIR}/geneinfo_beta.txt"
+SIGNATURE_METADATA = f"{RAW_DIR}/siginfo_beta.txt"
+TREATMENT_MATRIX_FILE = url_filename(dataset_cfg["treatment_matrix_url"])
+CONTROL_MATRIX_FILE = url_filename(dataset_cfg["control_matrix_url"])
+TREATMENT_MATRIX = f"{RAW_DIR}/{TREATMENT_MATRIX_FILE}"
+CONTROL_MATRIX = f"{RAW_DIR}/{CONTROL_MATRIX_FILE}"
+ANNOTATIONDB_CACHE = f"{RAW_METADATA_DIR}/all_adb_compounds.csv"
+ANNOTATIONDB_URL = f"{config['annotationdb_api'].rstrip('/')}/compound/all"
+ANNOTATIONDB_OVERWRITE = parse_bool(download_cfg.get("overwrite", False))
+
+CELL_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/cellinfo_beta.txt.ok"
+COMPOUND_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/compoundinfo_beta.txt.ok"
+GENE_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/geneinfo_beta.txt.ok"
+SIGNATURE_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/siginfo_beta.txt.ok"
+TREATMENT_MATRIX_STAMP = f"{DOWNLOAD_STAMP_DIR}/{TREATMENT_MATRIX_FILE}.ok"
+CONTROL_MATRIX_STAMP = f"{DOWNLOAD_STAMP_DIR}/{CONTROL_MATRIX_FILE}.ok"
+
+COMPOUND_INPUT_DIR = f"{PROC_DIR}/compound_inputs"
+COMPOUND_SIGNATURE_DIR = f"{PROC_DIR}/compound_signatures"
+COMPOUND_METADATA_DIR = f"{PROC_DIR}/compound_metadata"
+
+COMPOUND_MANIFEST = f"{PROC_METADATA_DIR}/lincs_compound_manifest.tsv"
+COMPOUND_MANIFEST_SUMMARY = f"{PROC_METADATA_DIR}/lincs_compound_manifest_summary.tsv"
+SIGNATURE_FEATURE_METADATA = f"{PROC_METADATA_DIR}/lincs_signature_feature_metadata.tsv"
+SELECTED_GENE_METADATA = f"{PROC_METADATA_DIR}/lincs_selected_gene_metadata.tsv"
+CURATED_COMPOUND_METADATA = f"{PROC_METADATA_DIR}/lincs_compound_metadata.tsv"
+
+SIGNATURES_CSV = f"{PROC_DIR}/assays/signatures.csv"
+COLDATA_CSV = f"{PROC_METADATA_DIR}/colData_raw.csv"
+MAE_RDS = f"{RESULTS_DIR}/{DATASET_ID}_MultiAssayExperiment.rds"
+TABLE_DIR = f"{RESULTS_DIR}/{DATASET_ID}_tables"
+TABLE_ARCHIVE = f"{RESULTS_DIR}/{DATASET_ID}_tables.tar.gz"
+
+DOWNLOAD_TARGETS = [
+    CELL_METADATA_STAMP,
+    COMPOUND_METADATA_STAMP,
+    GENE_METADATA_STAMP,
+    SIGNATURE_METADATA_STAMP,
+    TREATMENT_MATRIX_STAMP,
+    ANNOTATIONDB_CACHE,
+]
+if parse_bool(download_cfg.get("include_control_matrix", False)):
+    DOWNLOAD_TARGETS.append(CONTROL_MATRIX_STAMP)
+
+ALL_TARGETS = [
+    MAE_RDS,
+    TABLE_ARCHIVE,
+]
+
+
+rule download_cell_metadata:
+    output:
+        CELL_METADATA_STAMP,
+    params:
+        source_uri=dataset_cfg["cell_metadata_url"].rstrip("/"),
+        destination=CELL_METADATA,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule download_compound_metadata:
+    output:
+        COMPOUND_METADATA_STAMP,
+    params:
+        source_uri=dataset_cfg["compound_metadata_url"].rstrip("/"),
+        destination=COMPOUND_METADATA,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule download_gene_metadata:
+    output:
+        GENE_METADATA_STAMP,
+    params:
+        source_uri=dataset_cfg["gene_metadata_url"].rstrip("/"),
+        destination=GENE_METADATA,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule download_signature_metadata:
+    output:
+        SIGNATURE_METADATA_STAMP,
+    params:
+        source_uri=dataset_cfg["signature_metadata_url"].rstrip("/"),
+        destination=SIGNATURE_METADATA,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule download_treatment_matrix:
+    output:
+        TREATMENT_MATRIX_STAMP,
+    params:
+        source_uri=dataset_cfg["treatment_matrix_url"].rstrip("/"),
+        destination=TREATMENT_MATRIX,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule download_control_matrix:
+    output:
+        CONTROL_MATRIX_STAMP,
+    params:
+        source_uri=dataset_cfg["control_matrix_url"].rstrip("/"),
+        destination=CONTROL_MATRIX,
+        overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
+    script:
+        "scripts/download_file.py"
+
+
+rule fetch_annotationdb_compounds:
+    output:
+        cache_csv=ANNOTATIONDB_CACHE,
+    params:
+        source_uri=ANNOTATIONDB_URL,
+        overwrite=lambda _wildcards: ANNOTATIONDB_OVERWRITE,
+    script:
+        "scripts/fetch_annotationdb_compounds.R"
+
+
+checkpoint build_compound_manifest:
+    input:
+        cell_metadata_ready=CELL_METADATA_STAMP,
+        compound_metadata_ready=COMPOUND_METADATA_STAMP,
+        gene_metadata_ready=GENE_METADATA_STAMP,
+        signature_metadata_ready=SIGNATURE_METADATA_STAMP,
+        annotationdb_cache=ANNOTATIONDB_CACHE,
+    output:
+        manifest_tsv=COMPOUND_MANIFEST,
+        summary_tsv=COMPOUND_MANIFEST_SUMMARY,
+        feature_metadata_tsv=SIGNATURE_FEATURE_METADATA,
+        gene_metadata_tsv=SELECTED_GENE_METADATA,
+    params:
+        cell_metadata=CELL_METADATA,
+        compound_metadata=COMPOUND_METADATA,
+        gene_metadata=GENE_METADATA,
+        signature_metadata=SIGNATURE_METADATA,
+        annotationdb_cache=ANNOTATIONDB_CACHE,
+        compound_input_dir=COMPOUND_INPUT_DIR,
+    script:
+        "scripts/build_manifest.py"
+
+
+@lru_cache(maxsize=1)
+def manifest_rows():
+    manifest_path = checkpoints.build_compound_manifest.get().output.manifest_tsv
+
+    with open(manifest_path, newline="", encoding="utf-8") as handle:
+        rows = list(DictReader(handle, delimiter="\t"))
+
+    if not rows:
+        raise ValueError(
+            "Compound manifest is empty. Adjust the configured LINCS selection filters."
+        )
+
+    return rows
+
+
+def compound_signature_targets(_wildcards):
+    return [
+        f"{COMPOUND_SIGNATURE_DIR}/{row['compound_id']}.tsv" for row in manifest_rows()
+    ]
+
+
+def compound_metadata_targets(_wildcards):
+    return [
+        f"{COMPOUND_METADATA_DIR}/{row['compound_id']}.tsv" for row in manifest_rows()
+    ]
+
+
+def compound_input_path(wildcards):
+    checkpoints.build_compound_manifest.get().output.manifest_tsv
+    return f"{COMPOUND_INPUT_DIR}/{wildcards.compound_id}.tsv"
+
+
+rule compute_compound_signature:
+    input:
+        manifest_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.manifest_tsv,
+        feature_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.feature_metadata_tsv,
+        gene_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.gene_metadata_tsv,
+        expression_matrix_ready=TREATMENT_MATRIX_STAMP,
+    output:
+        signature_tsv=f"{COMPOUND_SIGNATURE_DIR}/{{compound_id}}.tsv",
+        metadata_tsv=f"{COMPOUND_METADATA_DIR}/{{compound_id}}.tsv",
+    params:
+        compound_input_path=compound_input_path,
+        expression_matrix=TREATMENT_MATRIX,
+        only_nonnegative_signatures=lambda _wildcards: parse_bool(
+            selection_cfg.get("only_nonnegative_signatures", True)
+        ),
+    script:
+        "scripts/compute_compound_signature.py"
+
+
+rule build_processed_tables:
+    input:
+        manifest_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.manifest_tsv,
+        feature_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.feature_metadata_tsv,
+        signature_tsvs=compound_signature_targets,
+        metadata_tsvs=compound_metadata_targets,
+    output:
+        signatures_csv=SIGNATURES_CSV,
+        coldata_csv=COLDATA_CSV,
+        compound_metadata_tsv=CURATED_COMPOUND_METADATA,
+    script:
+        "scripts/aggregate_results.py"
+
+
+rule build_multiassayexperiment:
+    input:
+        signatures_csv=SIGNATURES_CSV,
+        coldata_csv=COLDATA_CSV,
+        compound_metadata_tsv=CURATED_COMPOUND_METADATA,
+        feature_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.feature_metadata_tsv,
+        gene_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.gene_metadata_tsv,
+        configfile="config/pipeline.yaml",
+    output:
+        mae_rds=MAE_RDS,
+    params:
+        dataset_id=DATASET_ID,
+        dataset_version=DATASET_VERSION,
+    script:
+        "scripts/build_mae.R"
+
+
+rule export_mae_tables:
+    input:
+        mae_rds=MAE_RDS,
+        configfile="config/pipeline.yaml",
+    output:
+        outdir=directory(TABLE_DIR),
+    script:
+        "scripts/export_mae_tables.R"
+
+
+rule archive_mae_tables:
+    input:
+        outdir=TABLE_DIR,
+    output:
+        archive=TABLE_ARCHIVE,
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p "$(dirname "{output.archive}")"
+        COPYFILE_DISABLE=1 tar -C "{RESULTS_DIR}" -cf - "$(basename "{input.outdir}")" | gzip -9 > "{output.archive}"
+        """
+
+
+rule download:
+    input:
+        DOWNLOAD_TARGETS
+
+
+rule process:
+    input:
+        SIGNATURES_CSV,
+        COLDATA_CSV,
+        CURATED_COMPOUND_METADATA,
+        MAE_RDS,
