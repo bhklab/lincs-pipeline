@@ -1,55 +1,27 @@
 # Developer Notes
 
-## Purpose of This Section
+## Scope Decisions
 
-This section is for documenting technical decisions, challenges, and solutions encountered during your project. These notes are valuable for:
+- The default curation uses LINCS2020 treatment signatures and compound, gene, cell, and signature metadata from CLUE-hosted source files.
+- The default signature selection keeps named cancer cell lines, landmark genes, micromolar doses, compound perturbations, and nonnegative signature values.
+- Optional `include_compounds`, `exclude_compounds`, and `compound_limit` settings intentionally subset the source data when configured.
+- The control matrix is configured as an optional download but is not part of the default MAE output.
 
-- Future you (who will forget why certain decisions were made)
-- Collaborators who join the project later
-- People coming from your publication who want to reproduce your work
-- Anyone who might want to extend your research
+## Identifier Decisions
 
-## What to Document
+- The compound-level MAE key is `LINCS.CMap.Name`, using the LINCS source compound name.
+- `LINCS.CMap.Name` must be unique and non-missing before MAE construction. Future data that violates this should fail clearly rather than creating a public replacement key.
+- Internal file-safe stems may still be used for intermediate filenames, but they are not public identifiers.
+- Public columns with HDD-shared names are intended to be directly joinable to the base HDD; source-specific fields use source-specific prefixes.
 
-### Design Decisions
+## Metadata Decisions
 
-Document important decisions about your project's architecture, algorithms, or methodologies:
+- AnnotationDB enrichment is intentionally minimal: PubChem CID, AnnotationDB name, AnnotationDB SMILES, AnnotationDB aliases, and a match flag.
+- The AnnotationDB `/compound/all` response is cached once at `data/rawdata/metadata/all_adb_compounds.csv` and downstream joins read the cache.
+- Assay-valid compounds are retained when PubChem CID is missing if enough source metadata exists to build signatures.
+- Derived display-name columns are omitted from public outputs; users can choose LINCS or AnnotationDB names downstream.
 
-``` markdown
-## Choice of RNA-Seq Analysis Pipeline
+## Assay Decisions
 
-[2025-04-25] We chose the kallisto over STAR pipeline for the following reasons:
-    1. The CCLE dataset is very large, and kallisto is faster for quantifying large datasets
-    2. GDSC used kallisto, so we can compare our results with theirs
-```
-
-### Technical Challenges
-
-Record significant problems you encountered and how you solved them
-
-``` markdown
-## Sample Name Format Issue
-
-[2025-04-25] We encountered a problem with sample name formats between the CCLE and GDSC datasets.
-    The CCLE dataset uses "BRCA-XX-XXXX" format, while the GDSC dataset uses "BRCA-XX-XXXX-XX".
-    We had to write a script to remove the last two characters from the sample names in the GDSC dataset.
-```
-
-### Dependencies and Environment
-
-Document specific version requirements or compatibility issues:
-
-``` markdown
-## Critical Version Dependencies
-
-[2025-04-25] SimpleITK 2.4.1 introduced a bug that flips images, so we froze version 2.4.0
-```
-
-## Best Practices
-
-- Date your entries when appropriate
-- Link to relevant code files or external resources
-- Include small code snippets when helpful
-- Note alternatives you considered and why they were rejected
-- Document failed approaches to prevent others from repeating mistakes
-- Update notes when major changes are made to the approach
+- The `signatures` assay is derived by computing compound-level signatures from selected LINCS level-5 expression data.
+- The assay is not a direct one-file copy from source metadata; it is a pipeline-derived summary intended to align one column per curated compound.
