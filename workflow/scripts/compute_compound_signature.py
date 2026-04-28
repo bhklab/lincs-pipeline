@@ -94,7 +94,7 @@ sig_ids = compound_input['sig_id'].tolist()
 gene_ids = [str(gene_id) for gene_id in selected_gene_metadata['gene_id'].tolist()]
 
 gctx = parse(
-	str(snakemake.params.expression_matrix),
+	str(snakemake.input.expression_matrix),
 	cid=sig_ids,
 	rid=gene_ids,
 )

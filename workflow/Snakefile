@@ -74,7 +74,6 @@ RAW_METADATA_DIR = f"{RAW_DIR}/metadata"
 PROC_METADATA_DIR = f"{PROC_DIR}/metadata"
 DATASET_ID = dataset_cfg.get("id", "lincs")
 DATASET_VERSION = str(dataset_cfg.get("version", "v2.0.0"))
-DOWNLOAD_STAMP_DIR = f"{RAW_METADATA_DIR}/download_stamps"
 
 CELL_METADATA = f"{RAW_DIR}/cellinfo_beta.txt"
 COMPOUND_METADATA = f"{RAW_DIR}/compoundinfo_beta.txt"
@@ -86,13 +85,6 @@ TREATMENT_MATRIX = f"{RAW_DIR}/{TREATMENT_MATRIX_FILE}"
 CONTROL_MATRIX = f"{RAW_DIR}/{CONTROL_MATRIX_FILE}"
 ANNOTATIONDB_CACHE = f"{RAW_METADATA_DIR}/all_adb_compounds.csv"
 ANNOTATIONDB_URL = f"{config['annotationdb_api'].rstrip('/')}/compound/all"
-
-CELL_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/cellinfo_beta.txt.ok"
-COMPOUND_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/compoundinfo_beta.txt.ok"
-GENE_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/geneinfo_beta.txt.ok"
-SIGNATURE_METADATA_STAMP = f"{DOWNLOAD_STAMP_DIR}/siginfo_beta.txt.ok"
-TREATMENT_MATRIX_STAMP = f"{DOWNLOAD_STAMP_DIR}/{TREATMENT_MATRIX_FILE}.ok"
-CONTROL_MATRIX_STAMP = f"{DOWNLOAD_STAMP_DIR}/{CONTROL_MATRIX_FILE}.ok"
 
 COMPOUND_INPUT_DIR = f"{PROC_DIR}/compound_inputs"
 COMPOUND_SIGNATURE_DIR = f"{PROC_DIR}/compound_signatures"
@@ -111,15 +103,15 @@ TABLE_DIR = f"{RESULTS_DIR}/{DATASET_ID}_tables"
 TABLE_ARCHIVE = f"{RESULTS_DIR}/{DATASET_ID}_tables.tar.gz"
 
 DOWNLOAD_TARGETS = [
-    CELL_METADATA_STAMP,
-    COMPOUND_METADATA_STAMP,
-    GENE_METADATA_STAMP,
-    SIGNATURE_METADATA_STAMP,
-    TREATMENT_MATRIX_STAMP,
+    CELL_METADATA,
+    COMPOUND_METADATA,
+    GENE_METADATA,
+    SIGNATURE_METADATA,
+    TREATMENT_MATRIX,
     ANNOTATIONDB_CACHE,
 ]
 if parse_bool(download_cfg.get("include_control_matrix", False)):
-    DOWNLOAD_TARGETS.append(CONTROL_MATRIX_STAMP)
+    DOWNLOAD_TARGETS.append(CONTROL_MATRIX)
 
 ALL_TARGETS = [
     MAE_RDS,
@@ -129,10 +121,9 @@ ALL_TARGETS = [
 
 rule download_cell_metadata:
     output:
-        CELL_METADATA_STAMP,
+        CELL_METADATA,
     params:
         source_uri=dataset_cfg["cell_metadata_url"].rstrip("/"),
-        destination=CELL_METADATA,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -140,10 +131,9 @@ rule download_cell_metadata:
 
 rule download_compound_metadata:
     output:
-        COMPOUND_METADATA_STAMP,
+        COMPOUND_METADATA,
     params:
         source_uri=dataset_cfg["compound_metadata_url"].rstrip("/"),
-        destination=COMPOUND_METADATA,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -151,10 +141,9 @@ rule download_compound_metadata:
 
 rule download_gene_metadata:
     output:
-        GENE_METADATA_STAMP,
+        GENE_METADATA,
     params:
         source_uri=dataset_cfg["gene_metadata_url"].rstrip("/"),
-        destination=GENE_METADATA,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -162,10 +151,9 @@ rule download_gene_metadata:
 
 rule download_signature_metadata:
     output:
-        SIGNATURE_METADATA_STAMP,
+        SIGNATURE_METADATA,
     params:
         source_uri=dataset_cfg["signature_metadata_url"].rstrip("/"),
-        destination=SIGNATURE_METADATA,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -173,10 +161,9 @@ rule download_signature_metadata:
 
 rule download_treatment_matrix:
     output:
-        TREATMENT_MATRIX_STAMP,
+        TREATMENT_MATRIX,
     params:
         source_uri=dataset_cfg["treatment_matrix_url"].rstrip("/"),
-        destination=TREATMENT_MATRIX,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -184,10 +171,9 @@ rule download_treatment_matrix:
 
 rule download_control_matrix:
     output:
-        CONTROL_MATRIX_STAMP,
+        CONTROL_MATRIX,
     params:
         source_uri=dataset_cfg["control_matrix_url"].rstrip("/"),
-        destination=CONTROL_MATRIX,
         overwrite=lambda _wildcards: parse_bool(download_cfg.get("overwrite", False)),
     script:
         "scripts/download_file.py"
@@ -204,10 +190,10 @@ rule fetch_annotationdb_compounds:
 
 checkpoint build_compound_manifest:
     input:
-        cell_metadata_ready=CELL_METADATA_STAMP,
-        compound_metadata_ready=COMPOUND_METADATA_STAMP,
-        gene_metadata_ready=GENE_METADATA_STAMP,
-        signature_metadata_ready=SIGNATURE_METADATA_STAMP,
+        cell_metadata=CELL_METADATA,
+        compound_metadata=COMPOUND_METADATA,
+        gene_metadata=GENE_METADATA,
+        signature_metadata=SIGNATURE_METADATA,
         annotationdb_cache=ANNOTATIONDB_CACHE,
     output:
         manifest_tsv=COMPOUND_MANIFEST,
@@ -215,11 +201,6 @@ checkpoint build_compound_manifest:
         feature_metadata_tsv=SIGNATURE_FEATURE_METADATA,
         gene_metadata_tsv=SELECTED_GENE_METADATA,
     params:
-        cell_metadata=CELL_METADATA,
-        compound_metadata=COMPOUND_METADATA,
-        gene_metadata=GENE_METADATA,
-        signature_metadata=SIGNATURE_METADATA,
-        annotationdb_cache=ANNOTATIONDB_CACHE,
         compound_input_dir=COMPOUND_INPUT_DIR,
     script:
         "scripts/build_manifest.py"
@@ -262,13 +243,12 @@ rule compute_compound_signature:
         manifest_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.manifest_tsv,
         feature_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.feature_metadata_tsv,
         gene_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.gene_metadata_tsv,
-        expression_matrix_ready=TREATMENT_MATRIX_STAMP,
+        expression_matrix=TREATMENT_MATRIX,
     output:
         signature_tsv=f"{COMPOUND_SIGNATURE_DIR}/{{compound_id}}.tsv",
         metadata_tsv=f"{COMPOUND_METADATA_DIR}/{{compound_id}}.tsv",
     params:
         compound_input_path=compound_input_path,
-        expression_matrix=TREATMENT_MATRIX,
         only_nonnegative_signatures=lambda _wildcards: parse_bool(
             selection_cfg.get("only_nonnegative_signatures", True)
         ),

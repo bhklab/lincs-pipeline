@@ -164,7 +164,7 @@ exclude_compounds = set(parse_selection_list(selection_cfg.get('exclude_compound
 compound_limit = parse_optional_int(selection_cfg.get('compound_limit'))
 
 cell_metadata = pd.read_csv(
-	snakemake.params.cell_metadata,
+	snakemake.input.cell_metadata,
 	sep='\t',
 	usecols=['cell_iname', 'cellosaurus_id', 'ccle_name', 'cell_type'],
 )
@@ -175,7 +175,7 @@ if only_cancer_cells:
 keep_cells = set(cell_metadata['cell_iname'].tolist())
 
 gene_metadata = pd.read_csv(
-	snakemake.params.gene_metadata,
+	snakemake.input.gene_metadata,
 	sep='\t',
 	usecols=['gene_id', 'gene_symbol', 'ensembl_id', 'gene_title', 'feature_space'],
 )
@@ -184,7 +184,7 @@ if valid_gene_types:
 gene_metadata = gene_metadata.drop_duplicates(subset=['gene_id']).sort_values('gene_id')
 
 signature_data = pd.read_csv(
-	snakemake.params.signature_metadata,
+	snakemake.input.signature_metadata,
 	sep='\t',
 	usecols=[
 		'sig_id',
@@ -210,7 +210,7 @@ signature_data = signature_data.dropna(
 )
 
 compound_metadata = pd.read_csv(
-	snakemake.params.compound_metadata,
+	snakemake.input.compound_metadata,
 	sep='\t',
 	usecols=['cmap_name', 'pert_id', 'target', 'moa', 'inchi_key', 'compound_aliases'],
 )
@@ -242,7 +242,7 @@ compound_metadata = compound_metadata.sort_values(['cmap_name', 'pert_id']).rese
 	drop=True
 )
 
-annotationdb = pd.read_csv(snakemake.params.annotationdb_cache)
+annotationdb = pd.read_csv(snakemake.input.annotationdb_cache)
 if 'Unnamed: 0' in annotationdb.columns:
 	annotationdb = annotationdb.drop(columns=['Unnamed: 0'])
 annotationdb = annotationdb.rename(
