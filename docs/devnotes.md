@@ -25,3 +25,4 @@
 
 - The `signatures` assay is derived by computing compound-level signatures from selected LINCS level-5 expression data.
 - The assay is not a direct one-file copy from source metadata; it is a pipeline-derived summary intended to align one column per curated compound.
+- Sparse missing expression values in the source GCTX are handled per gene by fitting the signature model on non-missing signatures for that gene. A compound still fails if any selected gene has no expression values for that compound.

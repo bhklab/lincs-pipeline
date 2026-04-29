@@ -56,6 +56,44 @@ def build_design_matrix(compound_input, batch_categories, cell_categories):
 	return np.hstack([pert_time, pert_dose, batch_features, cell_features])
 
 
+def fit_coefficients(design_with_intercept, response_matrix):
+	missing_mask = np.isnan(response_matrix)
+	if not missing_mask.any():
+		coefficient_matrix, *_ = np.linalg.lstsq(
+			design_with_intercept,
+			response_matrix,
+			rcond=None,
+		)
+		return coefficient_matrix[1:, :], 0, 0, 0
+
+	all_missing_genes = missing_mask.all(axis=0)
+	if all_missing_genes.any():
+		raise ValueError(
+			'Some selected genes have no expression values for this compound'
+		)
+
+	coefficient_matrix = np.empty(
+		(design_with_intercept.shape[1] - 1, response_matrix.shape[1]),
+		dtype=np.float64,
+	)
+	for gene_index in range(response_matrix.shape[1]):
+		response = response_matrix[:, gene_index]
+		observed = ~np.isnan(response)
+		gene_coefficients, *_ = np.linalg.lstsq(
+			design_with_intercept[observed, :],
+			response[observed],
+			rcond=None,
+		)
+		coefficient_matrix[:, gene_index] = gene_coefficients[1:]
+
+	return (
+		coefficient_matrix,
+		int(missing_mask.sum()),
+		int(missing_mask.any(axis=1).sum()),
+		int(missing_mask.any(axis=0).sum()),
+	)
+
+
 compound_id = snakemake.wildcards.compound_id
 compound_input_path = Path(snakemake.params.compound_input_path)
 manifest_df = pd.read_csv(snakemake.input.manifest_tsv, sep='\t')
@@ -102,21 +140,19 @@ expression_df = gctx.data_df
 expression_df.index = expression_df.index.astype(str)
 expression_df = expression_df.reindex(index=gene_ids, columns=sig_ids)
 
-if expression_df.isna().any().any():
-	raise ValueError(
-		f'Missing expression values were encountered for compound {compound_id}'
-	)
-
 response_matrix = expression_df.to_numpy(dtype=np.float64).T
 design_with_intercept = np.column_stack(
 	[np.ones(design_matrix.shape[0], dtype=np.float64), design_matrix]
 )
-coefficient_matrix, *_ = np.linalg.lstsq(
-	design_with_intercept,
-	response_matrix,
-	rcond=None,
+(
+	coefficient_matrix,
+	missing_expression_values,
+	signatures_with_missing_expression,
+	genes_with_missing_expression,
+) = fit_coefficients(
+	design_with_intercept=design_with_intercept,
+	response_matrix=response_matrix,
 )
-coefficient_matrix = coefficient_matrix[1:, :]
 if parse_bool(snakemake.params.only_nonnegative_signatures):
 	coefficient_matrix = np.abs(coefficient_matrix)
 
@@ -165,6 +201,9 @@ print(
 	f'compound_id={compound_id} '
 	f'n_signatures={compound_input.shape[0]} '
 	f'n_genes={len(gene_ids)} '
-	f'n_features={feature_metadata.shape[0]}',
+	f'n_features={feature_metadata.shape[0]} '
+	f'missing_expression_values={missing_expression_values} '
+	f'signatures_with_missing_expression={signatures_with_missing_expression} '
+	f'genes_with_missing_expression={genes_with_missing_expression}',
 	flush=True,
 )
