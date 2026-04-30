@@ -73,7 +73,6 @@ fmt_percent <- function(x, digits = 1) {
 is_present <- function(x) {
   !is.na(x) & nzchar(trimws(as.character(x)))
 }
-
 ```
 
 ## Load the MAE
@@ -687,7 +686,7 @@ top_heatmap_features <- feature_stats |>
 
 top_heatmap_compounds <- compound_metadata |>
   arrange(desc(LINCS.Signature.Count), LINCS.CMap.Name) |>
-  slice_head(n = 80) |>
+  slice_head(n = 60) |>
   pull(LINCS.CMap.Name)
 
 heatmap_mat <- signature_mat[
@@ -732,11 +731,17 @@ ggplot(
     fill = "Scaled\nvalue"
   ) +
   theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
+    axis.text.x = element_text(angle = 60, hjust = 1, size = 6),
     panel.grid = element_blank()
   )
 ```
+
+Feature rows are coefficients from the compound-level signature model. Scalar
+rows such as `pert_dose` and `pert_time` capture treatment dose and time
+effects, `bead_batch:*` rows capture source batch effects, and `cell_iname:*`
+rows capture cell-line-associated effects. Colours are scaled within each
+feature row, so they are useful for comparing compounds within a feature, not
+for comparing absolute magnitudes across different feature rows.
 
 ## Basic Access Patterns
 
