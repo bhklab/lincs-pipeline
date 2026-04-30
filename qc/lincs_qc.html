@@ -1773,11 +1773,11 @@ kable(overview_tbl)</code></pre>
 </tr>
 <tr class="odd">
 <td align="left">Cell line metadata records</td>
-<td align="left">0</td>
+<td align="left">131</td>
 </tr>
 <tr class="even">
 <td align="left">Cell lines in AnnotationDB</td>
-<td align="left">0</td>
+<td align="left">131</td>
 </tr>
 </tbody>
 </table>
@@ -1852,7 +1852,8 @@ the code shown in this section.</p>
 ## 5 signatures           10-DEBC           10-DEBC
 ## 6 signatures             2-BFI             2-BFI</code></pre>
 <pre class="r"><code>names(metadata(mae))</code></pre>
-<pre><code>## [1] &quot;Pipeline&quot;               &quot;Selected.Gene.Metadata&quot; &quot;Drug.Metadata&quot;</code></pre>
+<pre><code>## [1] &quot;Pipeline&quot;               &quot;Selected.Gene.Metadata&quot; &quot;Cell.Line.Metadata&quot;    
+## [4] &quot;Drug.Metadata&quot;</code></pre>
 <p>The <code>sampleMap</code> is one-to-one for this dataset: both
 <code>primary</code> and <code>colname</code> are
 <code>LINCS.CMap.Name</code>, and they point to the same compound
@@ -2149,15 +2150,15 @@ kable(cell_line_summary)</code></pre>
 <tbody>
 <tr class="odd">
 <td align="left">Cell line metadata records</td>
-<td align="left">0</td>
+<td align="left">131</td>
 </tr>
 <tr class="even">
 <td align="left">Cell lines with Cellosaurus ID</td>
-<td align="left">0</td>
+<td align="left">131</td>
 </tr>
 <tr class="odd">
 <td align="left">Cell lines in AnnotationDB</td>
-<td align="left">0</td>
+<td align="left">131</td>
 </tr>
 <tr class="even">
 <td align="left">Cell-line assay features</td>
@@ -2180,6 +2181,92 @@ kable(cell_line_summary)</code></pre>
   ) |&gt;
   slice_head(n = 8) |&gt;
   kable()</code></pre>
+<table>
+<colgroup>
+<col width="14%" />
+<col width="13%" />
+<col width="22%" />
+<col width="13%" />
+<col width="16%" />
+<col width="19%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">LINCS.Cell.Name</th>
+<th align="left">Cellosaurus.ID</th>
+<th align="left">In.AnnotationDB.CellLine</th>
+<th align="left">Cell.Line.Name</th>
+<th align="left">LINCS.CCLE.Name</th>
+<th align="left">LINCS.Primary.Disease</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">22RV1</td>
+<td align="left">CVCL_1045</td>
+<td align="left">TRUE</td>
+<td align="left">22Rv1</td>
+<td align="left">22RV1_PROSTATE</td>
+<td align="left">prostate cancer</td>
+</tr>
+<tr class="even">
+<td align="left">5637</td>
+<td align="left">CVCL_0126</td>
+<td align="left">TRUE</td>
+<td align="left">5637</td>
+<td align="left">5637_URINARY_TRACT</td>
+<td align="left">bladder cancer</td>
+</tr>
+<tr class="odd">
+<td align="left">A204</td>
+<td align="left">CVCL_1058</td>
+<td align="left">TRUE</td>
+<td align="left">A-204</td>
+<td align="left">A204_SOFT_TISSUE</td>
+<td align="left">embryonal cancer</td>
+</tr>
+<tr class="even">
+<td align="left">A375</td>
+<td align="left">CVCL_0132</td>
+<td align="left">TRUE</td>
+<td align="left">A-375</td>
+<td align="left">A375_SKIN</td>
+<td align="left">skin cancer</td>
+</tr>
+<tr class="odd">
+<td align="left">A549</td>
+<td align="left">CVCL_0023</td>
+<td align="left">TRUE</td>
+<td align="left">A-549</td>
+<td align="left">A549_LUNG</td>
+<td align="left">lung cancer</td>
+</tr>
+<tr class="even">
+<td align="left">A673</td>
+<td align="left">CVCL_0080</td>
+<td align="left">TRUE</td>
+<td align="left">A-673</td>
+<td align="left">A673_BONE</td>
+<td align="left">bone cancer</td>
+</tr>
+<tr class="odd">
+<td align="left">AGS</td>
+<td align="left">CVCL_0139</td>
+<td align="left">TRUE</td>
+<td align="left">AGS</td>
+<td align="left">AGS_STOMACH</td>
+<td align="left">gastric cancer</td>
+</tr>
+<tr class="even">
+<td align="left">AN3CA</td>
+<td align="left">CVCL_0028</td>
+<td align="left">TRUE</td>
+<td align="left">AN3-CA</td>
+<td align="left">AN3CA_ENDOMETRIUM</td>
+<td align="left">endometrial cancer</td>
+</tr>
+</tbody>
+</table>
 </div>
 <div id="signature-coverage" class="section level2">
 <h2>Signature Coverage</h2>
@@ -2430,11 +2517,14 @@ ggplot(
   kable()</code></pre>
 <table>
 <colgroup>
+<col width="10%" />
+<col width="13%" />
+<col width="12%" />
+<col width="12%" />
+<col width="13%" />
+<col width="10%" />
 <col width="16%" />
-<col width="21%" />
-<col width="20%" />
-<col width="20%" />
-<col width="21%" />
+<col width="10%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -2443,6 +2533,9 @@ ggplot(
 <th align="left">LINCS.Feature.name</th>
 <th align="left">LINCS.Feature.type</th>
 <th align="left">LINCS.Feature.value</th>
+<th align="left">Cellosaurus.ID</th>
+<th align="left">In.AnnotationDB.CellLine</th>
+<th align="left">Cell.Line.Name</th>
 </tr>
 </thead>
 <tbody>
@@ -2452,6 +2545,9 @@ ggplot(
 <td align="left">pert_time</td>
 <td align="left">scalar</td>
 <td align="left">pert_time</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">pert_dose</td>
@@ -2459,6 +2555,9 @@ ggplot(
 <td align="left">pert_dose</td>
 <td align="left">scalar</td>
 <td align="left">pert_dose</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="odd">
 <td align="left">bead_batch:b1</td>
@@ -2466,6 +2565,9 @@ ggplot(
 <td align="left">bead_batch:b1</td>
 <td align="left">bead_batch</td>
 <td align="left">b1</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">bead_batch:b10</td>
@@ -2473,6 +2575,9 @@ ggplot(
 <td align="left">bead_batch:b10</td>
 <td align="left">bead_batch</td>
 <td align="left">b10</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="odd">
 <td align="left">bead_batch:b11</td>
@@ -2480,6 +2585,9 @@ ggplot(
 <td align="left">bead_batch:b11</td>
 <td align="left">bead_batch</td>
 <td align="left">b11</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">bead_batch:b12</td>
@@ -2487,6 +2595,9 @@ ggplot(
 <td align="left">bead_batch:b12</td>
 <td align="left">bead_batch</td>
 <td align="left">b12</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="odd">
 <td align="left">bead_batch:b13</td>
@@ -2494,6 +2605,9 @@ ggplot(
 <td align="left">bead_batch:b13</td>
 <td align="left">bead_batch</td>
 <td align="left">b13</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">bead_batch:b14</td>
@@ -2501,6 +2615,9 @@ ggplot(
 <td align="left">bead_batch:b14</td>
 <td align="left">bead_batch</td>
 <td align="left">b14</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="odd">
 <td align="left">bead_batch:b15</td>
@@ -2508,6 +2625,9 @@ ggplot(
 <td align="left">bead_batch:b15</td>
 <td align="left">bead_batch</td>
 <td align="left">b15</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">bead_batch:b16</td>
@@ -2515,6 +2635,9 @@ ggplot(
 <td align="left">bead_batch:b16</td>
 <td align="left">bead_batch</td>
 <td align="left">b16</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="odd">
 <td align="left">bead_batch:b17</td>
@@ -2522,6 +2645,9 @@ ggplot(
 <td align="left">bead_batch:b17</td>
 <td align="left">bead_batch</td>
 <td align="left">b17</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">bead_batch:b18</td>
@@ -2529,6 +2655,9 @@ ggplot(
 <td align="left">bead_batch:b18</td>
 <td align="left">bead_batch</td>
 <td align="left">b18</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
+<td align="left">NA</td>
 </tr>
 </tbody>
 </table>
