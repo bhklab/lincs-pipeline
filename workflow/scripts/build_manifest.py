@@ -33,6 +33,44 @@ FEATURE_METADATA_COLUMNS = [
 	'feature_type',
 	'feature_value',
 ]
+SOURCE_CELL_METADATA_COLUMNS = [
+	'cell_iname',
+	'cellosaurus_id',
+	'ccle_name',
+	'cell_type',
+	'primary_disease',
+	'subtype',
+	'cell_lineage',
+	'donor_age',
+	'donor_sex',
+	'donor_ethnicity',
+	'donor_tumor_phase',
+	'growth_pattern',
+	'provider_name',
+	'provider_catalog_id',
+	'cell_alias',
+	'doubling_time',
+]
+CELL_LINE_METADATA_COLUMNS = [
+	'LINCS.Cell.Name',
+	'Cellosaurus.ID',
+	'In.AnnotationDB.CellLine',
+	'Cell.Line.Name',
+	'LINCS.CCLE.Name',
+	'LINCS.Cell.Type',
+	'LINCS.Primary.Disease',
+	'LINCS.Subtype',
+	'LINCS.Cell.Lineage',
+	'LINCS.Donor.Age',
+	'LINCS.Donor.Sex',
+	'LINCS.Donor.Ethnicity',
+	'LINCS.Donor.Tumor.Phase',
+	'LINCS.Growth.Pattern',
+	'LINCS.Provider.Name',
+	'LINCS.Provider.Catalog.ID',
+	'LINCS.Cell.Alias',
+	'LINCS.Doubling.Time',
+]
 
 
 def parse_bool(value):
@@ -107,6 +145,27 @@ def normalize_cid(value):
 	return int(float(value))
 
 
+def normalize_accession_key(value):
+	text = clean_optional_string(value)
+	if text is None:
+		return ''
+	return text.upper()
+
+
+def normalize_cell_name_key(value):
+	text = clean_optional_string(value)
+	if text is None:
+		return ''
+	return re.sub(r'[^A-Z0-9]+', '', text.upper())
+
+
+def clean_string_columns(frame):
+	for column in frame.columns:
+		if pd.api.types.is_object_dtype(frame[column]):
+			frame[column] = frame[column].map(clean_optional_string)
+	return frame
+
+
 def write_feature_metadata(path, batch_categories, cell_categories):
 	rows = [
 		{
@@ -151,6 +210,98 @@ def write_feature_metadata(path, batch_categories, cell_categories):
 	return feature_frame
 
 
+def build_cell_line_metadata(cell_metadata, annotationdb_cell_lines, cell_categories):
+	cell_source = cell_metadata.drop_duplicates(subset=['cell_iname']).copy()
+	cell_source = (
+		cell_source.set_index('cell_iname').reindex(cell_categories).reset_index()
+	)
+
+	annotationdb_cell_lines = annotationdb_cell_lines.rename(
+		columns={
+			'name': 'annotationdb_cell_line_name',
+			'accession': 'annotationdb_cellosaurus_id',
+		}
+	)
+	annotationdb_cell_lines = clean_string_columns(annotationdb_cell_lines)
+	annotationdb_cell_lines['accession_key'] = annotationdb_cell_lines[
+		'annotationdb_cellosaurus_id'
+	].map(normalize_accession_key)
+	annotationdb_cell_lines['name_key'] = annotationdb_cell_lines[
+		'annotationdb_cell_line_name'
+	].map(normalize_cell_name_key)
+
+	by_accession = (
+		annotationdb_cell_lines[annotationdb_cell_lines['accession_key'] != '']
+		.drop_duplicates(subset=['accession_key'])
+		.set_index('accession_key')
+	)
+	by_name = (
+		annotationdb_cell_lines[annotationdb_cell_lines['name_key'] != '']
+		.drop_duplicates(subset=['name_key'])
+		.set_index('name_key')
+	)
+
+	cell_source['source_accession_key'] = cell_source['cellosaurus_id'].map(
+		normalize_accession_key
+	)
+	cell_source['source_name_key'] = cell_source['cell_iname'].map(
+		normalize_cell_name_key
+	)
+	cell_source['matched_name'] = None
+	cell_source['matched_accession'] = None
+
+	accession_matches = cell_source['source_accession_key'].isin(by_accession.index)
+	if accession_matches.any():
+		matched_rows = by_accession.loc[
+			cell_source.loc[accession_matches, 'source_accession_key']
+		]
+		cell_source.loc[accession_matches, 'matched_name'] = matched_rows[
+			'annotationdb_cell_line_name'
+		].to_numpy()
+		cell_source.loc[accession_matches, 'matched_accession'] = matched_rows[
+			'annotationdb_cellosaurus_id'
+		].to_numpy()
+
+	name_matches = cell_source['matched_accession'].isna() & cell_source[
+		'source_name_key'
+	].isin(by_name.index)
+	if name_matches.any():
+		matched_rows = by_name.loc[cell_source.loc[name_matches, 'source_name_key']]
+		cell_source.loc[name_matches, 'matched_name'] = matched_rows[
+			'annotationdb_cell_line_name'
+		].to_numpy()
+		cell_source.loc[name_matches, 'matched_accession'] = matched_rows[
+			'annotationdb_cellosaurus_id'
+		].to_numpy()
+
+	out = pd.DataFrame(
+		{
+			'LINCS.Cell.Name': cell_source['cell_iname'],
+			'Cellosaurus.ID': cell_source['cellosaurus_id'].combine_first(
+				cell_source['matched_accession']
+			),
+			'In.AnnotationDB.CellLine': cell_source['matched_accession'].notna(),
+			'Cell.Line.Name': cell_source['matched_name'],
+			'LINCS.CCLE.Name': cell_source['ccle_name'],
+			'LINCS.Cell.Type': cell_source['cell_type'],
+			'LINCS.Primary.Disease': cell_source['primary_disease'],
+			'LINCS.Subtype': cell_source['subtype'],
+			'LINCS.Cell.Lineage': cell_source['cell_lineage'],
+			'LINCS.Donor.Age': cell_source['donor_age'],
+			'LINCS.Donor.Sex': cell_source['donor_sex'],
+			'LINCS.Donor.Ethnicity': cell_source['donor_ethnicity'],
+			'LINCS.Donor.Tumor.Phase': cell_source['donor_tumor_phase'],
+			'LINCS.Growth.Pattern': cell_source['growth_pattern'],
+			'LINCS.Provider.Name': cell_source['provider_name'],
+			'LINCS.Provider.Catalog.ID': cell_source['provider_catalog_id'],
+			'LINCS.Cell.Alias': cell_source['cell_alias'],
+			'LINCS.Doubling.Time': cell_source['doubling_time'],
+		},
+		columns=CELL_LINE_METADATA_COLUMNS,
+	)
+	return out.sort_values('LINCS.Cell.Name')
+
+
 cfg = snakemake.config
 selection_cfg = cfg['selection']
 
@@ -166,8 +317,9 @@ compound_limit = parse_optional_int(selection_cfg.get('compound_limit'))
 cell_metadata = pd.read_csv(
 	snakemake.input.cell_metadata,
 	sep='\t',
-	usecols=['cell_iname', 'cellosaurus_id', 'ccle_name', 'cell_type'],
+	usecols=SOURCE_CELL_METADATA_COLUMNS,
 )
+cell_metadata = clean_string_columns(cell_metadata)
 if only_named_cells:
 	cell_metadata = cell_metadata.dropna(subset=['cellosaurus_id', 'ccle_name'])
 if only_cancer_cells:
@@ -256,8 +408,16 @@ annotationdb = annotationdb.rename(
 )
 annotationdb = annotationdb.dropna(subset=['inchikey']).copy()
 
+annotationdb_cell_lines = pd.read_csv(snakemake.input.annotationdb_cell_line_cache)
+if 'Unnamed: 0' in annotationdb_cell_lines.columns:
+	annotationdb_cell_lines = annotationdb_cell_lines.drop(columns=['Unnamed: 0'])
+
 manifest_rows = []
-summary_counts = {'missing_inchikey': 0, 'unmapped_annotationdb': 0}
+summary_counts = {
+	'missing_inchikey': 0,
+	'unmapped_annotationdb': 0,
+	'unmapped_cell_lines': 0,
+}
 compound_input_dir = Path(snakemake.params.compound_input_dir)
 compound_input_dir.mkdir(parents=True, exist_ok=True)
 for existing_file in compound_input_dir.glob('*.tsv'):
@@ -356,6 +516,18 @@ feature_metadata = write_feature_metadata(
 	cell_categories=cell_categories,
 )
 
+cell_line_metadata = build_cell_line_metadata(
+	cell_metadata=cell_metadata,
+	annotationdb_cell_lines=annotationdb_cell_lines,
+	cell_categories=cell_categories,
+)
+summary_counts['unmapped_cell_lines'] = int(
+	(~cell_line_metadata['In.AnnotationDB.CellLine']).sum()
+)
+cell_line_metadata_path = Path(snakemake.output.cell_line_metadata_tsv)
+cell_line_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+cell_line_metadata.to_csv(cell_line_metadata_path, sep='\t', index=False)
+
 gene_metadata_path = Path(snakemake.output.gene_metadata_tsv)
 gene_metadata_path.parent.mkdir(parents=True, exist_ok=True)
 gene_metadata.to_csv(gene_metadata_path, sep='\t', index=False)
@@ -367,6 +539,10 @@ summary_rows = [
 	{'metric': 'feature_rows', 'value': int(feature_metadata.shape[0])},
 	{'metric': 'batch_categories', 'value': int(len(batch_categories))},
 	{'metric': 'cell_categories', 'value': int(len(cell_categories))},
+	{
+		'metric': 'unmapped_cell_lines',
+		'value': int(summary_counts['unmapped_cell_lines']),
+	},
 	{
 		'metric': 'skipped_missing_inchikey',
 		'value': int(summary_counts['missing_inchikey']),
@@ -388,6 +564,7 @@ print(
 	f'manifest_rows={manifest_df.shape[0]} '
 	f'filtered_signature_rows={signature_data.shape[0]} '
 	f'selected_genes={gene_metadata.shape[0]} '
-	f'features={feature_metadata.shape[0]}',
+	f'features={feature_metadata.shape[0]} '
+	f'cell_lines={cell_line_metadata.shape[0]}',
 	flush=True,
 )

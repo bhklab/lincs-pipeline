@@ -85,6 +85,8 @@ TREATMENT_MATRIX = f"{RAW_DIR}/{TREATMENT_MATRIX_FILE}"
 CONTROL_MATRIX = f"{RAW_DIR}/{CONTROL_MATRIX_FILE}"
 ANNOTATIONDB_CACHE = f"{RAW_METADATA_DIR}/all_adb_compounds.csv"
 ANNOTATIONDB_URL = f"{config['annotationdb_api'].rstrip('/')}/compound/all"
+ANNOTATIONDB_CELL_LINE_CACHE = f"{RAW_METADATA_DIR}/all_adb_cell_lines.csv"
+ANNOTATIONDB_CELL_LINE_URL = f"{config['annotationdb_api'].rstrip('/')}/cell_line/all"
 
 COMPOUND_INPUT_DIR = f"{PROC_DIR}/compound_inputs"
 COMPOUND_SIGNATURE_DIR = f"{PROC_DIR}/compound_signatures"
@@ -95,6 +97,7 @@ COMPOUND_MANIFEST_SUMMARY = f"{PROC_METADATA_DIR}/lincs_compound_manifest_summar
 SIGNATURE_FEATURE_METADATA = f"{PROC_METADATA_DIR}/lincs_signature_feature_metadata.tsv"
 SELECTED_GENE_METADATA = f"{PROC_METADATA_DIR}/lincs_selected_gene_metadata.tsv"
 CURATED_COMPOUND_METADATA = f"{PROC_METADATA_DIR}/lincs_compound_metadata.tsv"
+CURATED_CELL_LINE_METADATA = f"{PROC_METADATA_DIR}/lincs_cell_line_metadata.tsv"
 
 SIGNATURES_CSV = f"{PROC_DIR}/assays/signatures.csv"
 COLDATA_CSV = f"{PROC_METADATA_DIR}/colData_raw.csv"
@@ -109,6 +112,7 @@ DOWNLOAD_TARGETS = [
     SIGNATURE_METADATA,
     TREATMENT_MATRIX,
     ANNOTATIONDB_CACHE,
+    ANNOTATIONDB_CELL_LINE_CACHE,
 ]
 if parse_bool(download_cfg.get("include_control_matrix", False)):
     DOWNLOAD_TARGETS.append(CONTROL_MATRIX)
@@ -188,6 +192,15 @@ rule fetch_annotationdb_compounds:
         "scripts/fetch_annotationdb_compounds.R"
 
 
+rule fetch_annotationdb_cell_lines:
+    output:
+        cache_csv=ANNOTATIONDB_CELL_LINE_CACHE,
+    params:
+        source_uri=ANNOTATIONDB_CELL_LINE_URL,
+    script:
+        "scripts/fetch_annotationdb_compounds.R"
+
+
 checkpoint build_compound_manifest:
     input:
         cell_metadata=CELL_METADATA,
@@ -195,11 +208,13 @@ checkpoint build_compound_manifest:
         gene_metadata=GENE_METADATA,
         signature_metadata=SIGNATURE_METADATA,
         annotationdb_cache=ANNOTATIONDB_CACHE,
+        annotationdb_cell_line_cache=ANNOTATIONDB_CELL_LINE_CACHE,
     output:
         manifest_tsv=COMPOUND_MANIFEST,
         summary_tsv=COMPOUND_MANIFEST_SUMMARY,
         feature_metadata_tsv=SIGNATURE_FEATURE_METADATA,
         gene_metadata_tsv=SELECTED_GENE_METADATA,
+        cell_line_metadata_tsv=CURATED_CELL_LINE_METADATA,
     params:
         compound_input_dir=COMPOUND_INPUT_DIR,
     script:
@@ -277,6 +292,7 @@ rule build_multiassayexperiment:
         compound_metadata_tsv=CURATED_COMPOUND_METADATA,
         feature_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.feature_metadata_tsv,
         gene_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.gene_metadata_tsv,
+        cell_line_metadata_tsv=lambda _wildcards: checkpoints.build_compound_manifest.get().output.cell_line_metadata_tsv,
         configfile="config/pipeline.yaml",
     output:
         mae_rds=MAE_RDS,
@@ -320,4 +336,5 @@ rule process:
         SIGNATURES_CSV,
         COLDATA_CSV,
         CURATED_COMPOUND_METADATA,
+        CURATED_CELL_LINE_METADATA,
         MAE_RDS,

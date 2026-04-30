@@ -41,6 +41,9 @@ write_tsv <- function(frame, path) {
 }
 
 as_plain_df <- function(value) {
+  if (inherits(value, "DataFrame")) {
+    return(as.data.frame(value))
+  }
   as.data.frame(value, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
@@ -88,6 +91,15 @@ add_manifest(
   "drug_metadata.tsv",
   drug_metadata,
   "Harmonized drug metadata used by the MAE."
+)
+
+cell_line_metadata <- as_plain_df(mae_metadata$Cell.Line.Metadata)
+write_tsv(cell_line_metadata, file.path(out_dir, "cell_line_metadata.tsv"))
+add_manifest(
+  "cell_line_metadata",
+  "cell_line_metadata.tsv",
+  cell_line_metadata,
+  "Harmonized cell line metadata used by the MAE."
 )
 
 for (assay_name in names(MultiAssayExperiment::experiments(mae))) {

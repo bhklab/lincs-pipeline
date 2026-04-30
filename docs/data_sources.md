@@ -19,6 +19,8 @@ The control matrix URL is retained in the config but is disabled by default.
 ## AnnotationDB
 
 AnnotationDB enrichment uses the configurable API base URL at
-`annotationdb_api`; the workflow appends `/compound/all`. The downloaded cache
-is stored under `data/rawdata/metadata/`, while generated manifests and
-processed compound metadata are stored under `data/procdata/metadata/`.
+`annotationdb_api`. The workflow appends `/compound/all` for compound metadata
+and `/cell_line/all` for Cellosaurus cell-line identifiers. Downloaded caches
+are stored under `data/rawdata/metadata/`, while generated manifests and
+processed compound and cell-line metadata are stored under
+`data/procdata/metadata/`.

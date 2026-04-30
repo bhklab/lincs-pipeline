@@ -76,6 +76,11 @@ as_integer_or_na <- function(values) {
   suppressWarnings(as.integer(as.character(values)))
 }
 
+as_logical_or_false <- function(values) {
+  values <- tolower(as.character(values))
+  values %in% c("true", "t", "1", "yes")
+}
+
 build_public_drug_metadata <- function(compound_metadata) {
   pubchem_cid <- as_integer_or_na(compound_metadata$cid)
   lincs_key <- as.character(compound_metadata$cmap_name)
@@ -106,8 +111,25 @@ build_public_drug_metadata <- function(compound_metadata) {
   public
 }
 
+build_public_cell_line_metadata <- function(cell_line_metadata) {
+  cell_line_key <- as.character(cell_line_metadata$LINCS.Cell.Name)
+  if (any(is.na(cell_line_key) | !nzchar(trimws(cell_line_key)))) {
+    stopf("LINCS cell names must be non-missing before MAE construction")
+  }
+  if (anyDuplicated(cell_line_key) > 0L) {
+    stopf("LINCS cell names must be unique before MAE construction")
+  }
+  cell_line_metadata$In.AnnotationDB.CellLine <- as_logical_or_false(
+    cell_line_metadata$In.AnnotationDB.CellLine
+  )
+  row.names(cell_line_metadata) <- cell_line_metadata$LINCS.Cell.Name
+  cell_line_metadata
+}
+
 compound_metadata <- read_tsv(snakemake@input[["compound_metadata_tsv"]])
 drug_metadata <- build_public_drug_metadata(compound_metadata)
+cell_line_metadata <- read_tsv(snakemake@input[["cell_line_metadata_tsv"]])
+cell_line_metadata <- build_public_cell_line_metadata(cell_line_metadata)
 
 signatures <- read_csv(snakemake@input[["signatures_csv"]], row.names = 1)
 missing_signature_columns <- setdiff(
@@ -136,6 +158,29 @@ row_data <- data.frame(
 names(row_data) <- sub("^feature_", "LINCS.Feature.", names(row_data))
 row.names(row_data) <- row_data$Feature.ID
 
+row_data$Cellosaurus.ID <- NA_character_
+row_data$In.AnnotationDB.CellLine <- NA
+row_data$Cell.Line.Name <- NA_character_
+cell_feature_rows <- row_data$LINCS.Feature.type == "cell_iname"
+cell_feature_match <- match(
+  row_data$LINCS.Feature.value[cell_feature_rows],
+  cell_line_metadata$LINCS.Cell.Name
+)
+if (any(is.na(cell_feature_match))) {
+  stopf(
+    "Cell line metadata is missing %d cell_iname feature rows",
+    sum(is.na(cell_feature_match))
+  )
+}
+row_data$Cellosaurus.ID[cell_feature_rows] <- cell_line_metadata$Cellosaurus.ID[
+  cell_feature_match
+]
+row_data$In.AnnotationDB.CellLine[cell_feature_rows] <-
+  cell_line_metadata$In.AnnotationDB.CellLine[cell_feature_match]
+row_data$Cell.Line.Name[cell_feature_rows] <- cell_line_metadata$Cell.Line.Name[
+  cell_feature_match
+]
+
 signature_experiment <- SummarizedExperiment::SummarizedExperiment(
   assays = S4Vectors::SimpleList(values = assay_matrix),
   rowData = S4Vectors::DataFrame(row_data, row.names = row.names(row_data)),
@@ -143,7 +188,7 @@ signature_experiment <- SummarizedExperiment::SummarizedExperiment(
 )
 
 sample_map <- data.frame(
-  assay = "signatures",
+  assay = factor("signatures", levels = "signatures"),
   primary = colnames(assay_matrix),
   colname = colnames(assay_matrix),
   stringsAsFactors = FALSE
@@ -170,6 +215,10 @@ metadata(mae) <- list(
     )
   ),
   Selected.Gene.Metadata = read_tsv(snakemake@input[["gene_metadata_tsv"]]),
+  Cell.Line.Metadata = S4Vectors::DataFrame(
+    cell_line_metadata,
+    row.names = cell_line_metadata$LINCS.Cell.Name
+  ),
   Drug.Metadata = S4Vectors::DataFrame(
     drug_metadata,
     row.names = drug_metadata$LINCS.CMap.Name

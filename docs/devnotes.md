@@ -16,8 +16,10 @@
 
 ## Metadata Decisions
 
-- AnnotationDB enrichment is intentionally minimal: PubChem CID, AnnotationDB name, AnnotationDB SMILES, AnnotationDB aliases, and a match flag.
+- AnnotationDB compound enrichment is intentionally minimal: PubChem CID, AnnotationDB name, AnnotationDB SMILES, AnnotationDB aliases, and a match flag.
 - The AnnotationDB `/compound/all` response is cached once at `data/rawdata/metadata/all_adb_compounds.csv` and downstream joins read the cache.
+- LINCS cell lines are assay features, not MAE samples. Cell-line metadata is stored in `metadata(mae)$Cell.Line.Metadata`, exported as `cell_line_metadata.tsv`, and joined into `rowData(signatures)` for `cell_iname` rows.
+- The AnnotationDB `/cell_line/all` response is cached once at `data/rawdata/metadata/all_adb_cell_lines.csv`; selected LINCS cell lines are joined by Cellosaurus ID first and LINCS cell name second.
 - Assay-valid compounds are retained when PubChem CID is missing if enough source metadata exists to build signatures.
 - Derived display-name columns are omitted from public outputs; users can choose LINCS or AnnotationDB names downstream.
 

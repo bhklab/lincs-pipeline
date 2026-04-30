@@ -11,8 +11,8 @@ output:
 ---
 
 This notebook demonstrates the structure and basic use of the final
-`MultiAssayExperiment` containing compound-level LINCS signatures and compound
-annotations.
+`MultiAssayExperiment` containing compound-level LINCS signatures, compound
+annotations, and cell-line annotations.
 
 ## Setup
 
@@ -98,6 +98,14 @@ feature_metadata <- as.data.frame(rowData(signature_se)) |>
 selected_gene_metadata <- as.data.frame(metadata(mae)$Selected.Gene.Metadata) |>
   as_tibble()
 
+cell_line_metadata <- if ("Cell.Line.Metadata" %in% names(metadata(mae))) {
+  as.data.frame(metadata(mae)$Cell.Line.Metadata) |>
+    rownames_to_column("Cell.Line.Key") |>
+    as_tibble()
+} else {
+  tibble()
+}
+
 mae
 ```
 
@@ -165,7 +173,9 @@ overview_tbl <- tibble(
     "Median source signatures per compound",
     "Maximum source signatures per compound",
     "Compounds with PubChem CID",
-    "Compounds without PubChem CID"
+    "Compounds without PubChem CID",
+    "Cell line metadata records",
+    "Cell lines in AnnotationDB"
   ),
   value = c(
     metadata(mae)$Pipeline$ID,
@@ -179,7 +189,15 @@ overview_tbl <- tibble(
     fmt_count(stats::median(compound_metadata$LINCS.Signature.Count)),
     fmt_count(max(compound_metadata$LINCS.Signature.Count)),
     fmt_count(sum(!is.na(compound_metadata$Pubchem.CID))),
-    fmt_count(sum(is.na(compound_metadata$Pubchem.CID)))
+    fmt_count(sum(is.na(compound_metadata$Pubchem.CID))),
+    fmt_count(nrow(cell_line_metadata)),
+    fmt_count(
+      if (nrow(cell_line_metadata) > 0) {
+        sum(cell_line_metadata$In.AnnotationDB.CellLine, na.rm = TRUE)
+      } else {
+        0L
+      }
+    )
   )
 )
 
@@ -294,6 +312,62 @@ ggplot(
     fill = NULL
   ) +
   theme_void()
+```
+
+## Cell Line Metadata
+
+LINCS cell lines are represented as `cell_iname` feature rows in the
+`signatures` assay rather than as MAE samples. Cell-line metadata is stored in
+`metadata(mae)$Cell.Line.Metadata`, joined into the corresponding rowData rows,
+and exported as `cell_line_metadata.tsv`.
+
+```{r cell-line-metadata-summary}
+cell_line_summary <- tibble(
+  quantity = c(
+    "Cell line metadata records",
+    "Cell lines with Cellosaurus ID",
+    "Cell lines in AnnotationDB",
+    "Cell-line assay features"
+  ),
+  value = c(
+    fmt_count(nrow(cell_line_metadata)),
+    fmt_count(
+      if (nrow(cell_line_metadata) > 0) {
+        sum(is_present(cell_line_metadata$Cellosaurus.ID))
+      } else {
+        0L
+      }
+    ),
+    fmt_count(
+      if (nrow(cell_line_metadata) > 0) {
+        sum(cell_line_metadata$In.AnnotationDB.CellLine, na.rm = TRUE)
+      } else {
+        0L
+      }
+    ),
+    fmt_count(sum(feature_metadata$LINCS.Feature.type == "cell_iname"))
+  )
+)
+
+kable(cell_line_summary)
+```
+
+```{r cell-line-metadata-preview}
+cell_line_metadata |>
+  select(
+    any_of(
+      c(
+        "LINCS.Cell.Name",
+        "Cellosaurus.ID",
+        "In.AnnotationDB.CellLine",
+        "Cell.Line.Name",
+        "LINCS.CCLE.Name",
+        "LINCS.Primary.Disease"
+      )
+    )
+  ) |>
+  slice_head(n = 8) |>
+  kable()
 ```
 
 ## Signature Coverage
