@@ -1,10 +1,751 @@
 ---
-title: "LINCS Pipeline QC"
-output: html_document
+title: "LINCS Signature MAE QC"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
 ---
 
+This notebook demonstrates the structure and basic use of the final
+`MultiAssayExperiment` containing compound-level LINCS signatures and compound
+annotations.
+
+## Setup
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(MultiAssayExperiment)
+  library(SummarizedExperiment)
+  library(S4Vectors)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+  library(ggplot2)
+  library(knitr)
+  library(scales)
+  library(uwot)
+})
+
+theme_set(theme_minimal(base_size = 12))
+
+project_root <- normalizePath(
+  if (dir.exists("data/results")) "." else "..",
+  winslash = "/",
+  mustWork = TRUE
+)
+knitr::opts_knit$set(root.dir = project_root)
+
+mae_path <- file.path(
+  project_root,
+  "data",
+  "results",
+  "lincs_MultiAssayExperiment.rds"
+)
+
+if (!file.exists(mae_path)) {
+  stop("MAE file not found: ", mae_path)
+}
+
+fmt_count <- function(x) {
+  format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+fmt_number <- function(x, digits = 2) {
+  format(round(x, digits), big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+fmt_percent <- function(x, digits = 1) {
+  paste0(format(round(100 * x, digits), nsmall = digits, trim = TRUE), "%")
+}
+
+is_present <- function(x) {
+  !is.na(x) & nzchar(trimws(as.character(x)))
+}
+
 ```
 
-## Placeholder
+## Load the MAE
+
+```{r load-data}
+mae <- readRDS(mae_path)
+
+assay_names <- names(experiments(mae))
+signature_se <- experiments(mae)[["signatures"]]
+signature_mat <- assay(signature_se)
+
+compound_metadata <- as.data.frame(metadata(mae)$Drug.Metadata) |>
+  rownames_to_column("Compound.Key") |>
+  as_tibble()
+
+coldata <- as.data.frame(colData(mae)) |>
+  as_tibble()
+
+feature_metadata <- as.data.frame(rowData(signature_se)) |>
+  as_tibble()
+
+selected_gene_metadata <- as.data.frame(metadata(mae)$Selected.Gene.Metadata) |>
+  as_tibble()
+
+mae
+```
+
+## Dataset Overview
+
+```{r dataset-overview, class.source="fold-hide"}
+feature_type_counts <- feature_metadata |>
+  count(LINCS.Feature.type, name = "features", sort = TRUE)
+
+annotation_availability <- compound_metadata |>
+  mutate(
+    annotation_status = if_else(
+      In.AnnotationDB,
+      "AnnotationDB enriched",
+      "No AnnotationDB match",
+      missing = "No AnnotationDB match"
+    )
+  ) |>
+  count(annotation_status, name = "compounds") |>
+  mutate(
+    fraction = compounds / sum(compounds),
+    percent = scales::percent(fraction, accuracy = 0.1),
+    label = paste0(
+      annotation_status,
+      "\n",
+      scales::comma(compounds),
+      " (",
+      percent,
+      ")"
+    )
+  )
+
+assay_summary <- tibble(
+  assay = assay_names,
+  feature_type = "compound-level LINCS signature coefficients",
+  assay_name = vapply(
+    assay_names,
+    \(assay_name) {
+      paste(assayNames(experiments(mae)[[assay_name]]), collapse = ", ")
+    },
+    character(1)
+  ),
+  features = vapply(
+    assay_names,
+    \(assay_name) nrow(experiments(mae)[[assay_name]]),
+    integer(1)
+  ),
+  compounds = vapply(
+    assay_names,
+    \(assay_name) ncol(experiments(mae)[[assay_name]]),
+    integer(1)
+  )
+)
+
+overview_tbl <- tibble(
+  quantity = c(
+    "Pipeline ID",
+    "Pipeline version",
+    "Experiments",
+    "Assays",
+    "Compounds in colData",
+    "Drug metadata records",
+    "Signature features",
+    "Selected genes represented in metadata",
+    "Median source signatures per compound",
+    "Maximum source signatures per compound",
+    "Compounds with PubChem CID",
+    "Compounds without PubChem CID"
+  ),
+  value = c(
+    metadata(mae)$Pipeline$ID,
+    metadata(mae)$Pipeline$Version,
+    fmt_count(length(experiments(mae))),
+    paste(assay_names, collapse = ", "),
+    fmt_count(nrow(coldata)),
+    fmt_count(nrow(compound_metadata)),
+    fmt_count(nrow(signature_mat)),
+    fmt_count(nrow(selected_gene_metadata)),
+    fmt_count(stats::median(compound_metadata$LINCS.Signature.Count)),
+    fmt_count(max(compound_metadata$LINCS.Signature.Count)),
+    fmt_count(sum(!is.na(compound_metadata$Pubchem.CID))),
+    fmt_count(sum(is.na(compound_metadata$Pubchem.CID)))
+  )
+)
+
+kable(overview_tbl)
+```
+
+```{r assay-summary}
+kable(assay_summary)
+```
+
+This MAE contains one assay, `signatures`. Rows are LINCS signature features and
+columns are compounds keyed by `LINCS.CMap.Name`. The object is compound-level:
+each assay column summarizes the source LINCS signatures associated with one
+compound rather than one perturbation instance.
+
+## Inspect the MAE Structure
+
+The object layout is inspected directly below. The experiment container, assay
+names, compound-level metadata, sample map, and object-level metadata can all be
+accessed from the printed structure and the code shown in this section.
+
+```{r object-contents}
+mae
+
+experiments(mae)
+
+colnames(colData(mae))
+
+head(as.data.frame(sampleMap(mae)))
+
+names(metadata(mae))
+```
+
+The `sampleMap` is one-to-one for this dataset: both `primary` and `colname`
+are `LINCS.CMap.Name`, and they point to the same compound columns in the
+`signatures` assay.
+
+## Compound Metadata
+
+```{r compound-metadata-head}
+compound_metadata |>
+  select(
+    LINCS.CMap.Name,
+    Pubchem.CID,
+    InChIKey,
+    In.AnnotationDB,
+    AnnotationDB.Name,
+    LINCS.MOA,
+    LINCS.Targets,
+    LINCS.Signature.Count
+  ) |>
+  slice_head(n = 8) |>
+  kable()
+```
+
+The main fields commonly used in downstream analysis are:
+
+* `LINCS.CMap.Name`: the compound identifier used as the MAE primary key and as the assay column name.
+* `Pubchem.CID`: the PubChem compound identifier used to join back to the base harmonized drug dataset.
+* `InChIKey`: the structure-level identifier retained from source and AnnotationDB processing.
+* `In.AnnotationDB`: whether the compound mapped to AnnotationDB metadata.
+* `AnnotationDB.Name` and `AnnotationDB.SMILES`: the minimal AnnotationDB metadata carried with this dataset.
+* `LINCS.MOA`, `LINCS.Targets`, and `LINCS.Aliases`: source LINCS compound annotations.
+* `LINCS.Signature.Count`: the number of source LINCS signatures contributing to the compound-level signature.
+
+```{r metadata-completeness}
+metadata_completeness <- compound_metadata |>
+  summarise(
+    across(
+      c(
+        Pubchem.CID,
+        InChIKey,
+        AnnotationDB.Name,
+        AnnotationDB.SMILES,
+        LINCS.MOA,
+        LINCS.Targets,
+        LINCS.Aliases,
+        AnnotationDB.Aliases
+      ),
+      \(value) sum(is_present(value))
+    )
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "field",
+    values_to = "present"
+  ) |>
+  mutate(
+    missing = nrow(compound_metadata) - present,
+    percent_present = fmt_percent(present / nrow(compound_metadata))
+  ) |>
+  arrange(desc(present))
+
+kable(metadata_completeness)
+```
+
+```{r annotationdb-coverage, fig.height=4.5, fig.width=7}
+ggplot(
+  annotation_availability,
+  aes(x = "", y = fraction, fill = annotation_status)
+) +
+  geom_col(width = 1, color = "white") +
+  geom_text(
+    aes(label = label),
+    position = position_stack(vjust = 0.5),
+    lineheight = 0.95
+  ) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = c("#4C956C", "#C75C5C")) +
+  labs(
+    title = "AnnotationDB metadata availability for LINCS compounds",
+    fill = NULL
+  ) +
+  theme_void()
+```
+
+## Signature Coverage
+
+The source LINCS data can contain many signatures for the same compound. The
+compound-level assay stores one signature column per compound while retaining
+the number of source signatures in `LINCS.Signature.Count`.
+
+```{r signature-count-summary}
+signature_count_tbl <- compound_metadata |>
+  summarise(
+    compounds = n(),
+    minimum = min(LINCS.Signature.Count),
+    q1 = stats::quantile(LINCS.Signature.Count, 0.25),
+    median = stats::median(LINCS.Signature.Count),
+    mean = mean(LINCS.Signature.Count),
+    q3 = stats::quantile(LINCS.Signature.Count, 0.75),
+    maximum = max(LINCS.Signature.Count)
+  ) |>
+  mutate(across(everything(), fmt_number))
+
+kable(signature_count_tbl)
+```
+
+```{r signature-count-histogram, fig.height=4}
+axis_values <- c(1, 3, 10, 30, 100, 300, 1000, 3000)
+
+ggplot(
+  compound_metadata,
+  aes(x = log10(LINCS.Signature.Count))
+) +
+  geom_histogram(bins = 45, fill = "#8EA8C3", color = "white") +
+  scale_x_continuous(
+    breaks = log10(axis_values),
+    labels = scales::comma(axis_values)
+  ) +
+  labs(
+    title = "Source signatures per compound",
+    x = "Number of source signatures per compound",
+    y = "Number of compounds"
+  )
+```
+
+```{r most-replicated-compounds}
+compound_metadata |>
+  arrange(desc(LINCS.Signature.Count), LINCS.CMap.Name) |>
+  select(
+    LINCS.CMap.Name,
+    Pubchem.CID,
+    In.AnnotationDB,
+    LINCS.MOA,
+    LINCS.Targets,
+    LINCS.Signature.Count
+  ) |>
+  slice_head(n = 12) |>
+  kable()
+```
+
+## Compound Annotation Landscape
+
+```{r moa-barplot, fig.height=6.5, fig.width=10}
+moa_summary <- compound_metadata |>
+  filter(is_present(LINCS.MOA)) |>
+  count(LINCS.MOA, name = "compounds", sort = TRUE) |>
+  slice_head(n = 15)
+
+ggplot(
+  moa_summary,
+  aes(
+    x = compounds,
+    y = reorder(stringr::str_wrap(LINCS.MOA, width = 38), compounds)
+  )
+) +
+  geom_col(fill = "#3B6EA8") +
+  labs(
+    title = "Most frequent LINCS mechanisms of action",
+    x = "Number of compounds",
+    y = "Mechanism of action"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 9),
+    plot.margin = margin(5.5, 10, 5.5, 24)
+  )
+```
+
+```{r target-barplot, fig.height=6, fig.width=10}
+target_summary <- compound_metadata |>
+  filter(is_present(LINCS.Targets)) |>
+  count(LINCS.Targets, name = "compounds", sort = TRUE) |>
+  slice_head(n = 15)
+
+ggplot(
+  target_summary,
+  aes(
+    x = compounds,
+    y = reorder(stringr::str_wrap(LINCS.Targets, width = 38), compounds)
+  )
+) +
+  geom_col(fill = "#6E9F64") +
+  labs(
+    title = "Most frequent LINCS targets",
+    x = "Number of compounds",
+    y = "Targets"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 9),
+    plot.margin = margin(5.5, 10, 5.5, 24)
+  )
+```
+
+## Signature Assay
+
+```{r feature-metadata-head}
+feature_metadata |>
+  slice_head(n = 12) |>
+  kable()
+```
+
+```{r feature-type-summary, fig.height=4}
+kable(feature_type_counts)
+
+ggplot(
+  feature_type_counts,
+  aes(x = reorder(LINCS.Feature.type, features), y = features)
+) +
+  geom_col(fill = "#7D5BA6") +
+  labs(
+    title = "Signature feature groups",
+    x = "Feature group",
+    y = "Number of features"
+  ) +
+  coord_flip()
+```
+
+The `signatures` assay stores numeric coefficients. Most entries are zero, so
+the next summaries show both overall matrix completeness and non-zero
+coefficient behavior.
+
+```{r assay-quality-summary}
+assay_values <- as.vector(signature_mat)
+nonzero_values <- assay_values[is.finite(assay_values) & assay_values != 0]
+
+assay_quality_tbl <- tibble(
+  quantity = c(
+    "Matrix rows",
+    "Matrix columns",
+    "Matrix entries",
+    "Missing entries",
+    "Non-finite entries",
+    "Zero fraction",
+    "Non-zero entries",
+    "Minimum coefficient",
+    "Median coefficient",
+    "Mean coefficient",
+    "Maximum coefficient"
+  ),
+  value = c(
+    fmt_count(nrow(signature_mat)),
+    fmt_count(ncol(signature_mat)),
+    fmt_count(length(assay_values)),
+    fmt_count(sum(is.na(assay_values))),
+    fmt_count(sum(!is.finite(assay_values))),
+    fmt_percent(mean(assay_values == 0, na.rm = TRUE)),
+    fmt_count(length(nonzero_values)),
+    fmt_number(min(assay_values, na.rm = TRUE), 4),
+    fmt_number(stats::median(assay_values, na.rm = TRUE), 4),
+    fmt_number(mean(assay_values, na.rm = TRUE), 4),
+    fmt_number(max(assay_values, na.rm = TRUE), 4)
+  )
+)
+
+kable(assay_quality_tbl)
+```
+
+```{r coefficient-histogram, fig.height=4}
+tibble(log10_abs_coefficient = log10(abs(nonzero_values))) |>
+  ggplot(aes(x = log10_abs_coefficient)) +
+  geom_histogram(bins = 70, fill = "#C75C5C", color = "white") +
+  labs(
+    title = "Non-zero signature coefficient magnitudes",
+    x = "log10 absolute coefficient",
+    y = "Number of coefficients"
+  )
+```
+
+```{r feature-variability}
+feature_stats <- tibble(
+  Feature.ID = rownames(signature_mat),
+  Mean = rowMeans(signature_mat),
+  SD = apply(signature_mat, 1, stats::sd),
+  Zero.Fraction = rowMeans(signature_mat == 0)
+) |>
+  left_join(feature_metadata, by = "Feature.ID") |>
+  arrange(desc(SD))
+
+kable(
+  feature_stats |>
+    select(
+      Feature.ID,
+      LINCS.Feature.type,
+      LINCS.Feature.value,
+      Mean,
+      SD,
+      Zero.Fraction
+    ) |>
+    mutate(
+      Mean = fmt_number(Mean, 4),
+      SD = fmt_number(SD, 4),
+      Zero.Fraction = fmt_percent(Zero.Fraction)
+    ) |>
+    slice_head(n = 15)
+)
+```
+
+```{r feature-variability-plot, fig.height=6, fig.width=9}
+top_feature_variability <- feature_stats |>
+  slice_head(n = 20)
+
+ggplot(
+  top_feature_variability,
+  aes(x = SD, y = reorder(Feature.ID, SD))
+) +
+  geom_col(fill = "#D49A3A") +
+  labs(
+    title = "Most variable signature features",
+    x = "Standard deviation across compounds",
+    y = "Feature"
+  )
+```
+
+## UMAP View
+
+A UMAP of the compound-by-feature matrix provides a compact view of global
+signature structure. The plot below uses a reproducible sample of compounds and
+colors points by the number of source signatures contributing to each
+compound-level column.
+
+```{r signature-umap, fig.height=5.5, fig.width=7}
+set.seed(20260430)
+
+variable_features <- feature_stats |>
+  filter(is.finite(SD), SD > 0) |>
+  pull(Feature.ID)
+
+umap_sample_n <- min(5000L, ncol(signature_mat))
+
+umap_compounds <- compound_metadata |>
+  filter(LINCS.CMap.Name %in% colnames(signature_mat)) |>
+  slice_sample(n = umap_sample_n)
+
+umap_signatures <- signature_mat[
+  variable_features,
+  umap_compounds$LINCS.CMap.Name,
+  drop = FALSE
+]
+
+umap_input <- scale(t(umap_signatures))
+umap_input[is.na(umap_input)] <- 0
+
+umap_layout <- uwot::umap(
+  umap_input,
+  n_neighbors = 15,
+  min_dist = 0.2,
+  metric = "cosine",
+  n_threads = 1,
+  n_sgd_threads = 1,
+  verbose = FALSE
+)
+
+umap_tbl <- as_tibble(umap_layout, .name_repair = \(x) c("UMAP1", "UMAP2")) |>
+  bind_cols(
+    umap_compounds |>
+      select(
+        LINCS.CMap.Name,
+        LINCS.Signature.Count,
+        In.AnnotationDB
+      )
+  )
+
+ggplot(
+  umap_tbl,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color = LINCS.Signature.Count
+  )
+) +
+  geom_point(alpha = 0.65, size = 0.8) +
+  scale_color_gradientn(
+    colors = c("#D8D8D8", "#3B6EA8", "#C75C5C"),
+    trans = "log10",
+    labels = scales::comma
+  ) +
+  labs(
+    title = "UMAP of sampled LINCS compound signatures",
+    subtitle = paste0(
+      "Compound-level signatures for ",
+      scales::comma(nrow(umap_tbl)),
+      " sampled compounds."
+    ),
+    x = "UMAP 1",
+    y = "UMAP 2",
+    color = "Source\nsignatures"
+  )
+```
+
+## High-Variance Feature Snapshot
+
+This heatmap shows the most variable signature features across the compounds
+with the largest number of contributing source signatures. Values are scaled by
+feature for visualization.
+
+```{r signature-heatmap, fig.height=7, fig.width=9}
+top_heatmap_features <- feature_stats |>
+  slice_head(n = 30) |>
+  pull(Feature.ID)
+
+top_heatmap_compounds <- compound_metadata |>
+  arrange(desc(LINCS.Signature.Count), LINCS.CMap.Name) |>
+  slice_head(n = 80) |>
+  pull(LINCS.CMap.Name)
+
+heatmap_mat <- signature_mat[
+  top_heatmap_features,
+  top_heatmap_compounds,
+  drop = FALSE
+]
+heatmap_scaled <- t(scale(t(heatmap_mat)))
+heatmap_scaled[!is.finite(heatmap_scaled)] <- 0
+
+heatmap_tbl <- as.data.frame(heatmap_scaled) |>
+  rownames_to_column("Feature.ID") |>
+  as_tibble() |>
+  pivot_longer(
+    cols = -Feature.ID,
+    names_to = "LINCS.CMap.Name",
+    values_to = "Scaled.Value"
+  ) |>
+  mutate(
+    Feature.ID = factor(Feature.ID, levels = rev(top_heatmap_features)),
+    LINCS.CMap.Name = factor(
+      LINCS.CMap.Name,
+      levels = top_heatmap_compounds
+    )
+  )
+
+ggplot(
+  heatmap_tbl,
+  aes(x = LINCS.CMap.Name, y = Feature.ID, fill = Scaled.Value)
+) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "#3B6EA8",
+    mid = "white",
+    high = "#C75C5C",
+    midpoint = 0
+  ) +
+  labs(
+    title = "Scaled high-variance signature features",
+    x = "Compounds ordered by source signature count",
+    y = "Feature",
+    fill = "Scaled\nvalue"
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid = element_blank()
+  )
+```
+
+## Basic Access Patterns
+
+The MAE can be used directly as an analysis-ready compound signature matrix.
+Most analyses will either use the assay matrix in feature-by-compound form or
+transpose it to compound-by-feature form for modeling.
+
+```{r access-one-compound}
+example_compound <- compound_metadata |>
+  filter(In.AnnotationDB) |>
+  arrange(desc(LINCS.Signature.Count), LINCS.CMap.Name) |>
+  slice(1) |>
+  pull(LINCS.CMap.Name)
+
+example_metadata <- compound_metadata |>
+  filter(LINCS.CMap.Name == example_compound) |>
+  select(
+    LINCS.CMap.Name,
+    Pubchem.CID,
+    InChIKey,
+    AnnotationDB.Name,
+    LINCS.MOA,
+    LINCS.Targets,
+    LINCS.Signature.Count
+  )
+
+kable(example_metadata)
+```
+
+```{r access-one-signature}
+example_signature <- tibble(
+  Feature.ID = rownames(signature_mat),
+  coefficient = signature_mat[, example_compound]
+) |>
+  left_join(feature_metadata, by = "Feature.ID") |>
+  arrange(desc(abs(coefficient))) |>
+  select(
+    Feature.ID,
+    LINCS.Feature.type,
+    LINCS.Feature.value,
+    coefficient
+  ) |>
+  slice_head(n = 12)
+
+kable(example_signature)
+```
+
+```{r access-target-subset}
+egfr_compounds <- compound_metadata |>
+  filter(grepl("EGFR", LINCS.Targets, fixed = TRUE)) |>
+  pull(LINCS.CMap.Name)
+
+egfr_signatures <- signature_mat[, egfr_compounds, drop = FALSE]
+
+tibble(
+  subset = "Compounds with EGFR in LINCS.Targets",
+  compounds = length(egfr_compounds),
+  features = nrow(egfr_signatures)
+) |>
+  kable()
+```
+
+```{r modeling-matrix}
+modeling_matrix <- t(signature_mat)
+
+tibble(
+  object = c("feature_by_compound_matrix", "compound_by_feature_matrix"),
+  rows = c(nrow(signature_mat), nrow(modeling_matrix)),
+  columns = c(ncol(signature_mat), ncol(modeling_matrix))
+) |>
+  mutate(
+    rows = fmt_count(rows),
+    columns = fmt_count(columns)
+  ) |>
+  kable()
+```
+
+The compound-by-feature matrix is typically the convenient orientation for
+machine learning or clustering workflows, while the feature-by-compound matrix
+matches the stored `SummarizedExperiment` assay orientation.
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```
